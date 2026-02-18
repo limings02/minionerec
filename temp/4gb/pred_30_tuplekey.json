@@ -1,0 +1,272 @@
+[
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_223><b_80><c_165>, <a_223><b_80><c_159>, <a_223><b_80><c_0>, <a_223><b_80><c_158>, <a_223><b_198><c_173>, <a_223><b_198><c_100>, <a_223><b_80><c_91>, <a_223><b_80><c_25>, <a_223><b_86><c_176>, <a_223><b_72><c_93>",
+        "output": "<a_223><b_80><c_216>\n",
+        "predict": [
+            "<a_223><b_80><c_84>",
+            "<a_223><b_86><c_176>",
+            "<a_223><b_80><c_159>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_147><c_0>",
+        "output": "<a_202><b_118><c_74>\n",
+        "predict": [
+            "<a_107><b_93><c_0>",
+            "<a_202><b_147><c_0>",
+            "<a_202><b_215><c_194>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_147><c_0>, <a_202><b_118><c_74>",
+        "output": "<a_99><b_53><c_168>\n",
+        "predict": [
+            "<a_202><b_118><c_74>",
+            "<a_202><b_52><c_171>",
+            "<a_202><b_215><c_194>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_147><c_0>, <a_202><b_118><c_74>, <a_99><b_53><c_168>",
+        "output": "<a_108><b_81><c_52>\n",
+        "predict": [
+            "<a_202><b_52><c_171>",
+            "<a_202><b_52><c_97>",
+            "<a_202><b_52><c_122>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_193><b_222><c_163>, <a_44><b_28><c_209>, <a_202><b_242><c_85>, <a_87><b_105><c_198>, <a_224><b_81><c_180>, <a_42><b_33><c_21>, <a_244><b_59><c_105>, <a_193><b_229><c_181>, <a_224><b_33><c_101>, <a_42><b_251><c_149>",
+        "output": "<a_224><b_76><c_250>\n",
+        "predict": [
+            "<a_42><b_33><c_16>",
+            "<a_42><b_251><c_149>",
+            "<a_224><b_81><c_180>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_193><b_5><c_106>, <a_193><b_5><c_106>, <a_244><b_185><c_140>, <a_202><b_25><c_167>, <a_87><b_44><c_137>, <a_224><b_163><c_173>, <a_87><b_0><c_203>, <a_87><b_44><c_247>, <a_87><b_238><c_111>, <a_251><b_188><c_84>",
+        "output": "<a_180><b_106><c_10>\n",
+        "predict": [
+            "<a_87><b_222><c_159>",
+            "<a_87><b_238><c_111>",
+            "<a_87><b_44><c_137>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_108><b_92><c_217>, <a_236><b_116><c_106>, <a_224><b_163><c_54>, <a_17><b_174><c_1>, <a_197><b_57><c_227>, <a_224><b_163><c_184>, <a_193><b_43><c_179>",
+        "output": "<a_104><b_60><c_152>\n",
+        "predict": [
+            "<a_224><b_163><c_205>",
+            "<a_193><b_43><c_134>",
+            "<a_193><b_43><c_179>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_10><c_78>, <a_79><b_24><c_40>, <a_99><b_119><c_196>, <a_224><b_17><c_207>, <a_17><b_96><c_71>, <a_36><b_43><c_199>, <a_71><b_44><c_249>, <a_71><b_114><c_136>, <a_67><b_244><c_35>",
+        "output": "<a_165><b_59><c_69>\n",
+        "predict": [
+            "<a_71><b_44><c_249>",
+            "<a_71><b_114><c_136>",
+            "<a_67><b_244><c_116>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_15><b_135><c_68>, <a_15><b_135><c_68>, <a_150><b_137><c_127>, <a_68><b_71><c_239>",
+        "output": "<a_193><b_240><c_215>\n",
+        "predict": [
+            "<a_68><b_71><c_239>",
+            "<a_68><b_98><c_239>",
+            "<a_68><b_121><c_117>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_36><b_157><c_248>, <a_36><b_157><c_248>, <a_193><b_7><c_242>, <a_14><b_75><c_236>, <a_14><b_246><c_237>, <a_17><b_145><c_1>, <a_44><b_98><c_1>",
+        "output": "<a_107><b_104><c_143>\n",
+        "predict": [
+            "<a_206><b_99><c_1>",
+            "<a_94><b_35><c_31>",
+            "<a_44><b_98><c_14>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_36><b_196><c_55>, <a_223><b_126><c_0>, <a_223><b_126><c_99>, <a_223><b_198><c_167>, <a_223><b_59><c_216>",
+        "output": "<a_233><b_86><c_124>\n",
+        "predict": [
+            "<a_223><b_201><c_101>",
+            "<a_223><b_86><c_176>",
+            "<a_223><b_198><c_173>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_159><b_27><c_133>, <a_17><b_14><c_32>, <a_202><b_198><c_218>, <a_173><b_93><c_124>",
+        "output": "<a_202><b_198><c_80>\n",
+        "predict": [
+            "<a_202><b_198><c_80>",
+            "<a_202><b_198><c_139>",
+            "<a_202><b_198><c_218>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_165><b_15><c_16>, <a_87><b_242><c_12>, <a_24><b_165><c_166>, <a_107><b_55><c_77>, <a_68><b_121><c_117>",
+        "output": "<a_165><b_214><c_30>\n",
+        "predict": [
+            "<a_68><b_121><c_117>",
+            "<a_68><b_121><c_7>",
+            "<a_68><b_121><c_203>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_24><b_91><c_229>, <a_24><b_170><c_144>, <a_71><b_225><c_89>",
+        "output": "<a_104><b_85><c_106>\n",
+        "predict": [
+            "<a_71><b_225><c_89>",
+            "<a_197><b_132><c_32>",
+            "<a_197><b_91><c_144>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_24><b_20><c_0>, <a_23><b_223><c_190>, <a_73><b_87><c_68>, <a_224><b_77><c_115>, <a_224><b_77><c_180>, <a_224><b_146><c_222>, <a_224><b_146><c_94>, <a_224><b_146><c_29>",
+        "output": "<a_73><b_10><c_6>\n",
+        "predict": [
+            "<a_224><b_77><c_43>",
+            "<a_224><b_81><c_180>",
+            "<a_224><b_146><c_222>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_165><b_159><c_154>, <a_107><b_133><c_57>, <a_202><b_100><c_73>",
+        "output": "<a_71><b_70><c_24>\n",
+        "predict": [
+            "<a_202><b_100><c_73>",
+            "<a_107><b_93><c_0>",
+            "<a_107><b_133><c_57>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_165><b_159><c_154>, <a_107><b_133><c_57>, <a_202><b_100><c_73>, <a_71><b_70><c_24>",
+        "output": "<a_71><b_127><c_119>\n",
+        "predict": [
+            "<a_71><b_70><c_16>",
+            "<a_202><b_100><c_73>",
+            "<a_71><b_70><c_146>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_108><b_196><c_55>, <a_150><b_9><c_27>, <a_36><b_174><c_193>, <a_165><b_35><c_0>, <a_150><b_132><c_11>, <a_14><b_137><c_79>, <a_236><b_3><c_174>, <a_236><b_230><c_205>, <a_228><b_187><c_137>, <a_210><b_171><c_62>",
+        "output": "<a_228><b_113><c_68>\n",
+        "predict": [
+            "<a_210><b_171><c_210>",
+            "<a_210><b_171><c_62>",
+            "<a_228><b_187><c_137>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_150><b_9><c_27>, <a_36><b_174><c_193>, <a_165><b_35><c_0>, <a_150><b_132><c_11>, <a_14><b_137><c_79>, <a_236><b_3><c_174>, <a_236><b_230><c_205>, <a_228><b_187><c_137>, <a_210><b_171><c_62>, <a_228><b_113><c_68>",
+        "output": "<a_94><b_195><c_69>\n",
+        "predict": [
+            "<a_228><b_187><c_137>",
+            "<a_228><b_113><c_68>",
+            "<a_210><b_171><c_62>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_107><b_142><c_216>, <a_210><b_239><c_121>, <a_122><b_126><c_5>",
+        "output": "<a_165><b_59><c_20>\n",
+        "predict": [
+            "<a_71><b_242><c_21>",
+            "<a_71><b_244><c_200>",
+            "<a_122><b_126><c_5>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_107><b_142><c_216>, <a_210><b_239><c_121>, <a_122><b_126><c_5>, <a_165><b_59><c_20>",
+        "output": "<a_165><b_159><c_154>\n",
+        "predict": [
+            "<a_165><b_59><c_69>",
+            "<a_202><b_52><c_97>",
+            "<a_122><b_126><c_5>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_161><c_182>, <a_79><b_85><c_92>",
+        "output": "<a_251><b_111><c_10>\n",
+        "predict": [
+            "<a_228><b_85><c_0>",
+            "<a_228><b_85><c_197>",
+            "<a_79><b_85><c_92>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_104><b_186><c_115>, <a_104><b_186><c_115>, <a_244><b_0><c_22>, <a_68><b_98><c_239>",
+        "output": "<a_107><b_93><c_0>\n",
+        "predict": [
+            "<a_68><b_98><c_239>",
+            "<a_244><b_0><c_0>",
+            "<a_244><b_0><c_22>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_104><b_186><c_115>, <a_104><b_186><c_115>, <a_244><b_0><c_22>, <a_68><b_98><c_239>, <a_107><b_93><c_0>",
+        "output": "<a_107><b_93><c_0>\n",
+        "predict": [
+            "<a_107><b_93><c_0>",
+            "<a_68><b_98><c_239>",
+            "<a_68><b_204><c_73>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_104><b_186><c_115>, <a_104><b_186><c_115>, <a_244><b_0><c_22>, <a_68><b_98><c_239>, <a_107><b_93><c_0>, <a_107><b_93><c_0>",
+        "output": "<a_107><b_93><c_0>\n",
+        "predict": [
+            "<a_107><b_93><c_0>",
+            "<a_68><b_98><c_239>",
+            "<a_109><b_74><c_57>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_73><b_9><c_0>, <a_236><b_229><c_162>, <a_173><b_73><c_110>, <a_202><b_52><c_44>",
+        "output": "<a_170><b_226><c_111>\n",
+        "predict": [
+            "<a_202><b_52><c_97>",
+            "<a_202><b_52><c_171>",
+            "<a_202><b_52><c_132>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_80><c_182>, <a_202><b_52><c_151>, <a_197><b_200><c_115>, <a_206><b_62><c_23>, <a_197><b_204><c_0>, <a_173><b_201><c_145>, <a_206><b_62><c_3>",
+        "output": "<a_173><b_86><c_176>\n",
+        "predict": [
+            "<a_173><b_201><c_145>",
+            "<a_202><b_62><c_79>",
+            "<a_202><b_62><c_99>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_232><c_177>, <a_122><b_121><c_22>, <a_224><b_208><c_243>",
+        "output": "<a_99><b_170><c_176>\n",
+        "predict": [
+            "<a_202><b_198><c_218>",
+            "<a_224><b_81><c_180>",
+            "<a_224><b_139><c_139>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_202><b_232><c_177>, <a_122><b_121><c_22>, <a_224><b_208><c_243>, <a_99><b_170><c_176>",
+        "output": "<a_99><b_170><c_176>\n",
+        "predict": [
+            "<a_99><b_170><c_176>",
+            "<a_99><b_132><c_123>",
+            "<a_99><b_100><c_215>"
+        ]
+    },
+    {
+        "input": "Can you predict the next possible item the user may expect, given the following chronological interaction history: <a_104><b_254><c_50>, <a_180><b_221><c_210>",
+        "output": "<a_170><b_228><c_53>\n",
+        "predict": [
+            "<a_94><b_35><c_31>",
+            "<a_150><b_14><c_0>",
+            "<a_94><b_93><c_171>"
+        ]
+    }
+]
