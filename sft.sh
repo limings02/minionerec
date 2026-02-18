@@ -6,7 +6,7 @@ for category in "Industrial_and_Scientific"; do
     test_file=$(ls -f ./data/Amazon/test/${category}*11.csv)
     info_file=$(ls -f ./data/Amazon/info/${category}*.txt)
     echo ${train_file} ${eval_file} ${info_file} ${test_file}
-    
+    # torchrun启动分布式训练，--nproc_per_node 在同一张机器上启动8个进程
     torchrun --nproc_per_node 8 \
             sft.py \
             --base_model your_model_path \
@@ -24,3 +24,6 @@ for category in "Industrial_and_Scientific"; do
             --item_meta_path ./data/Amazon/index//Industrial_and_Scientific.item.json \
             --freeze_LLM False
 done
+# --sid_index_path ...Industrial_and_Scientific.index.json
+# --item_meta_path ...Industrial_and_Scientific.item.json
+# SFT 不仅做 next SID，还用到item/sid的索引做了辅助任务

@@ -155,6 +155,8 @@ def train(
         new_tokens = token_extender.get_new_tokens()
         if new_tokens:
             print(f"Adding {len(new_tokens)} new tokens to tokenizer")
+            # 加入一行记录原始词表大小，以便后续冻结参数时使用
+            original_vocab_size = len(tokenizer)
             tokenizer.add_tokens(new_tokens)
             model.resize_token_embeddings(len(tokenizer))
 

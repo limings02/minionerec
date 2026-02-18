@@ -22,8 +22,8 @@ MOD = int(1e9 + 9)
 import numpy as np
 
 def get_hash(x):
-    x = [str(_) for _ in x]
-    return '-'.join(x)
+    # 用tuple 作为dict key，更快，没有字符串开销
+    return tuple(int(_) for _ in x)
 
 def set_seed(seed):
     random.seed(seed)
@@ -135,16 +135,16 @@ def main(
     prefix_allowed_tokens_fn = prefix_allowed_tokens_fn_semantic
     # prefix_allowed_tokens_fn = prefix_allowed_tokens_fn_title
     
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token = tokenizer.eos_token #许多模型没有原生的pad_token，或者pad_token和eos_token是一样的，所以这里把pad_token设置成eos_token，这样在生成的时候就会用eos_token来填充，保证生成的合理性
     tokenizer.pad_token_id = tokenizer.eos_token_id
-    tokenizer.padding_side = "left"
+    tokenizer.padding_side = "left" #pad放到左边，保证不同样本的末尾是对齐的。这里和我们的logits processor设计有关，我们的logits processor是根据输入的末尾来判断下一步生成的token应该是什么，所以需要保证输入的末尾是对齐的，这样才能正确地应用约束。
     
     # val_dataset = EvalD3Dataset(train_file=test_data_path, tokenizer=tokenizer, max_len=2560, category=category, test=True, K=K, seed=seed)
     val_dataset = EvalSidDataset(train_file=test_data_path, tokenizer=tokenizer, max_len=2560, category=category, test=True, K=K, seed=seed)
         
     encodings = [val_dataset[i] for i in range(len(val_dataset))]
     # encodings = [val_dataset[i] for i in indexes]
-    test_data = val_dataset.get_all()
+    test_data = val_dataset.get_all() #这个用的是我们内置的EvalDataset的get_all方法（其实是BaseDataset的）
 
     model.config.pad_token_id = model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
@@ -156,7 +156,7 @@ def main(
             length_penalty=1.0,
             **kwargs,
     ):
-        maxLen = max([len(_["input_ids"]) for _ in encodings])
+        maxLen = max([len(_["input_ids"]) for _ in encodings]) #先统计最大长度
 
         padding_encodings = {"input_ids": []}
         attention_mask = []
@@ -164,13 +164,13 @@ def main(
         for  _ in encodings:
             L = len(_["input_ids"])
             padding_encodings["input_ids"].append([tokenizer.pad_token_id] * (maxLen - L) + _["input_ids"])
-            attention_mask.append([0] * (maxLen - L) + [1] * L) 
+            attention_mask.append([0] * (maxLen - L) + [1] * L)  #手动实现左pad
         
         # print(f"num_beams: {num_beams}")
         generation_config = GenerationConfig(
             num_beams=num_beams,
             length_penalty=length_penalty,
-            num_return_sequences=num_beams,
+            num_return_sequences=num_beams, #num_beams和num_return_sequences都设置成num_beams，表示每个输入生成num_beams个输出，这样就可以得到每个输入对应的num_beams个候选答案，方便后续评估
             pad_token_id = model.config.pad_token_id,
             eos_token_id = model.config.eos_token_id,
             max_new_tokens = max_new_tokens,
@@ -196,18 +196,23 @@ def main(
                 output_scores=True,
                 logits_processor=logits_processor,
             )
-       
+        # generate()返回的sequences是prompt+completion拼在一起的，我们只想要模型生成的部分SID，所以把前maxlen切掉（已经pad过了）
+        # 这也是左pad的方便之处，保证了输入的末尾是对齐的，这样切掉前maxLen就能得到模型生成的部分
         batched_completions = generation_output.sequences[:, maxLen:]
-       
+        
         
         if base_model.lower().find("llama") > -1:
+            # batch_decode默认会把token id转换成字符串的时候去掉一些特殊字符，这些特殊字符在llama的tokenizer里是有特殊含义的，所以我们需要保留这些特殊字符，不能让batch_decode去掉它们，所以设置clean_up_tokenization_spaces=False，这样就能保留这些特殊字符，保证生成的合理性
+            # skip_special_tokens=True表示在解码的时候去掉特殊token，clean_up_tokenization_spaces=False表示在解码的时候不去掉多余的空格，这样就能保留生成文本中的特殊格式，保证生成的合理性
             output = tokenizer.batch_decode(batched_completions, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         else:
             output = tokenizer.batch_decode(batched_completions, skip_special_tokens=True)
             
-        output = [_.split("Response:\n")[-1].strip() for _ in output]
+        output = [_.split("Response:\n")[-1].strip() for _ in output] #其实前面已经把那部分截掉了，这里再做一次保险，确保只保留生成的部分，去掉可能存在的前缀信息
+        # 下面是把扁平列表恢复成每个样本对应num_beams个候选答案的列表，方便后续评估
+        # 最后想要存到json的是每个样本对应一个候选答案列表的格式，所以要把扁平列表恢复成每个样本对应num_beams个候选答案的格式
         real_outputs = [output[i * num_beams: (i + 1) * num_beams] for i in range(len(output) // num_beams)]
-        return real_outputs
+        return real_outputs #这就是最后的输出格式，每个元素是一个样本对应的num_beams个候选答案的列表
     
     model = model.to(device)
 
@@ -216,22 +221,22 @@ def main(
     new_encodings = []
     BLOCK = (len(encodings) + batch_size - 1) // batch_size
     for i in range(BLOCK):
-        new_encodings.append(encodings[i * batch_size: (i + 1) * batch_size])
+        new_encodings.append(encodings[i * batch_size: (i + 1) * batch_size]) #这里在拼batch
 
     
     for idx, encodings in enumerate(tqdm(new_encodings)):
         # Use standard evaluation
         output = evaluate(encodings, max_new_tokens=max_new_tokens, num_beams=num_beams, length_penalty=length_penalty)
-        
+        # 这里先分batch生成输出，然后把每个batch的输出拼接在一起，得到最终的outputs列表，里面每个元素是一个样本对应的num_beams个候选答案的列表
         outputs = outputs + output
-       
+        
     for i, test in enumerate(test_data):
-        test["predict"] = outputs[i]
-  
+        test["predict"] = outputs[i] # 给test加一个predict字段，存放模型生成的num_beams个候选答案的列表
+    
 
     for i in range(len(test_data)):
         if 'dedup' in test_data[i]:
-            test_data[i].pop('dedup')  
+            test_data[i].pop('dedup')  # 这个dedup字段是之前评估过程中用来判断是否去重的，现在不需要了，所以删除掉，避免存到json里造成混乱
     with open(result_json_data, 'w') as f:
         json.dump(test_data, f, indent=4)
 

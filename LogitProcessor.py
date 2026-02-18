@@ -52,7 +52,7 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
                     hash_key = sent[-self.prefix_index:]
                 else:
                     hash_key=sent[-self.count:]
-                hash_key = hash_key.tolist()
+                hash_key = tuple(hash_key.tolist())
                 prefix_allowed_tokens = self._prefix_allowed_tokens_fn(batch_id, hash_key)
 
                 if len(prefix_allowed_tokens) == 0:
