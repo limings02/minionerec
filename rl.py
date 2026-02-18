@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from data import D3Dataset, SidDataset, RLTitle2SidDataset, RLSeqTitle2SidDataset, RLSid2TitleDataset, RLSidhis2TitleDataset
 from torch.utils.data import ConcatDataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import os
 from minionerec_trainer import ReReTrainer
 from sasrec import SASRec
@@ -26,6 +26,22 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+def parse_target_modules(lora_target_modules):
+    if isinstance(lora_target_modules, (list, tuple)):
+        modules = [str(m).strip().strip("'\"") for m in lora_target_modules]
+        return [m for m in modules if m]
+
+    text = str(lora_target_modules).strip()
+    if (text.startswith("(") and text.endswith(")")) or (text.startswith("[") and text.endswith("]")):
+        text = text[1:-1]
+
+    modules = []
+    for module_name in text.split(","):
+        module_name = module_name.strip().strip("'\"")
+        if module_name:
+            modules.append(module_name)
+    return modules
 
 def train(
     # model/data params
@@ -66,10 +82,80 @@ def train(
     item_meta_path: str = "",
     dapo: bool = False,
     gspo: bool = False,
+    use_qlora: bool = False,  # enable QLoRA training (4-bit base + LoRA adapters)
+    lora_r: int = 8,
+    lora_alpha: int = 16,
+    lora_dropout: float = 0.05,
+    lora_target_modules: str = "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+    bnb_4bit_quant_type: str = "nf4",
+    bnb_4bit_use_double_quant: bool = True,
+    qlora_compute_dtype: str = "bfloat16",
 ):
     torch.backends.cuda.enable_flash_sdp(False)  
     torch.backends.cuda.enable_mem_efficient_sdp(False)
     set_seed(seed)
+
+    model_init_kwargs = None
+    peft_config = None
+    llm_model_load_kwargs = {"torch_dtype": torch.bfloat16, "device_map": "auto"}
+    training_bf16 = True
+    training_fp16 = False
+    optim_name = "paged_adamw_32bit"
+
+    if use_qlora:
+        try:
+            from peft import LoraConfig, TaskType
+        except ImportError as exc:
+            raise ImportError(
+                "QLoRA requires `peft`. Please install it (e.g. `pip install peft`)."
+            ) from exc
+
+        dtype_map = {
+            "bfloat16": torch.bfloat16,
+            "float16": torch.float16,
+            "float32": torch.float32,
+        }
+        qlora_compute_dtype = qlora_compute_dtype.lower()
+        if qlora_compute_dtype not in dtype_map:
+            raise ValueError(
+                f"Unsupported qlora_compute_dtype={qlora_compute_dtype}. "
+                "Choose from: bfloat16, float16, float32."
+            )
+        compute_dtype = dtype_map[qlora_compute_dtype]
+        target_modules = parse_target_modules(lora_target_modules)
+        if not target_modules:
+            raise ValueError("lora_target_modules is empty. Please provide at least one module name.")
+
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type=bnb_4bit_quant_type,
+            bnb_4bit_use_double_quant=bnb_4bit_use_double_quant,
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
+        llm_model_load_kwargs = {
+            "torch_dtype": compute_dtype,
+            "device_map": "auto",
+            "quantization_config": quantization_config,
+        }
+        model_init_kwargs = {
+            "torch_dtype": compute_dtype,
+            "quantization_config": quantization_config,
+        }
+        peft_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+            target_modules=target_modules,
+        )
+        optim_name = "paged_adamw_8bit"
+        if qlora_compute_dtype == "float16":
+            training_bf16 = False
+            training_fp16 = True
+        elif qlora_compute_dtype == "float32":
+            training_bf16 = False
+            training_fp16 = False
     
     category_dict = {"Industrial_and_Scientific": "industrial and scientific items", "Office_Products": "office products", "Toys_and_Games": "toys and games", "Sports": "sports and outdoors", "Books": "books"}
     print(category)
@@ -133,7 +219,7 @@ def train(
     print("train_dataset: ", train_dataset)
     print("eval_dataset: ", eval_dataset)
 
-    llm_model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="auto")
+    llm_model = AutoModelForCausalLM.from_pretrained(model_path, **llm_model_load_kwargs)
     device = llm_model.device
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     
@@ -278,8 +364,10 @@ def train(
                                 warmup_ratio=0.03,
                                 max_grad_norm= 0.3,
                                 num_train_epochs=num_train_epochs,
-                                bf16=True,
-                                optim="paged_adamw_32bit",
+                                bf16=training_bf16,
+                                fp16=training_fp16,
+                                optim=optim_name,
+                                model_init_kwargs=model_init_kwargs,
                                 lr_scheduler_type="cosine", 
                                 save_strategy="steps",
                                 report_to="wandb",
@@ -302,6 +390,7 @@ def train(
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         args=training_args,
+        peft_config=peft_config,
     )
 
     trainer.train()

@@ -10,7 +10,7 @@ import os
 import copy
 import torch.nn.functional as F
 
-class Tokenizer:
+class Tokenizer: #这是一个包装类，目的就是让不同的tokenizer有统一的接口，方便后续调用
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
         self.bos_id: int = self.tokenizer.bos_token_id
@@ -20,11 +20,12 @@ class Tokenizer:
     def encode(self, s: str, bos: bool, eos: bool) -> List[int]:
         assert type(s) is str
         t = self.tokenizer.encode(s)
+        # 这一步就是去除掉开头的bos和结尾的eos，因为我们在构造输入的时候会自己添加bos和eos，所以需要去掉原本tokenizer添加的bos和eos，避免重复添加
         while t[0] == self.bos_id:
             t = t[1:]
         while t[-1] == self.eos_id:
             t = t[:-1]
-
+        # 再按照我们的需要加回去，使得bos和eos变成我们的bool可控的参数，而不是tokenizer默认添加的
         if bos and self.bos_id is not None:
             t = [self.bos_id] + t
         if eos and self.eos_id is not None:
@@ -34,14 +35,14 @@ class Tokenizer:
     def decode(self, t: List[int]) -> str:
         return self.tokenizer.decode(t)
 
-class BaseDataset(Dataset):
+class BaseDataset(Dataset): # 定义一个数据集类，并且告诉pytorch，这个类符合Dataset的规范，可以被DataLoader调用
     def __init__(self, tokenizer=None, max_len=2048, test=False, category="", dedup=False, seed=None):
         super().__init__()
         self.data = None
         self.inputs = None
         
         if tokenizer is not None:
-            self.tokenizer = Tokenizer(tokenizer)
+            self.tokenizer = Tokenizer(tokenizer) # 这里是为了让不同的tokenizer有统一的接口，方便后续调用
         if seed is not None:
             random.seed(seed)
         
@@ -56,27 +57,28 @@ class BaseDataset(Dataset):
     def get_inputs(self):
         inputs = []
         for i in tqdm(range(len(self.data))):
-            inputs.append(self.pre(i))
+            inputs.append(self.pre(i)) #pre是一个函数，输入是数据的索引，输出是这个数据点的输入格式化后的结果，具体的格式化方式由子类实现
         self.inputs = inputs
 
     def get_all(self):
         temp = []
         for i in range(len(self.data)):
-            temp.append(self.get_history(self.data.iloc[i]))
+            temp.append(self.get_history(self.data.iloc[i])) #对每一行调用get_history函数，得到这个数据点的历史信息，具体的历史信息格式由子类实现
         return temp
 
     def get_inputs_list(self):
         return self.inputs
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx): # 按照索引取出样本
         return self.inputs[idx]
 
-    def pre(self, idx):
+    def pre(self, idx): # 必须被子类重写，否则会抛出异常，提示这个函数没有被实现
         raise NotImplementedError(None)
 
     def get_history(self, row):
-        raise {}
-       
+        # raise {}
+        raise NotImplementedError(None) #这里如果子类没有实现，也应该报告异常才对
+    
     def generate_prompt(self, data_point):
         return f"""### User Input: 
 {data_point["input"]}
@@ -105,7 +107,7 @@ class JSONBaseDataset(BaseDataset):
             self.indices = json.load(f)
 
 
-class SFTData(CSVBaseDataset):
+class SFTData(CSVBaseDataset): #从标题到标题的训练数据集，输入是用户的历史交互标题，输出是用户下一次交互的标题
     def __init__(self, train_file, tokenizer, max_len=2048, sample=-1, test = False, seed=0, category="", K=4, dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer, test)
 
@@ -199,7 +201,7 @@ class SFTData(CSVBaseDataset):
         }
 
 
-class D3Dataset(CSVBaseDataset):
+class D3Dataset(CSVBaseDataset): #相较于SFT，D3Dataset的输入输出都是文本格式，不进行tokenizer编码，输入是用户的历史交互标题，输出是用户下一次交互的标题，token化在训练阶段再做
     def __init__(self, train_file, max_len=2048, sample=-1, seed=0, category="", dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer=None, test=False)
 
@@ -351,7 +353,7 @@ class EvalD3Dataset(CSVBaseDataset):
         }
 
 
-class SidDataset(CSVBaseDataset):
+class SidDataset(CSVBaseDataset): #输出纯文本对，不做token化，输入是用户的历史交互的语义ID，输出是用户下一次交互的语义ID
     def __init__(self, train_file, max_len=2048, sample=-1, seed=0, category="", dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer=None, test=False)
 
@@ -466,7 +468,7 @@ Can you predict the next possible item that the user may expect?
         }
 
 
-class SidSFTDataset_GPR(CSVBaseDataset):
+class SidSFTDataset_GPR(CSVBaseDataset): #相较于SidSFTDataset，SidSFTDataset_GPR增加了对用户和物品特征的建模。
     def __init__(self, train_file, tokenizer, max_len=2048, sample=-1, test=False, seed=0, category="", K=4, dedup=False):
         super().__init__(train_file, sample, seed, max_len, category, dedup, tokenizer, test)
 
@@ -609,9 +611,9 @@ class EvalSidDataset(CSVBaseDataset):
 """
 
     def get_history(self, row):
-        row['history_item_sid'] = eval(row['history_item_sid'])
+        row['history_item_sid'] = eval(row['history_item_sid']) #eval把字符串中的内容当做表达式执行了
         L = len(row['history_item_sid']) 
-        history = ""
+        history = "" #把用户的历史交互的语义ID按照顺序拼接成一个字符串，作为输入的一部分，提示模型根据这个历史交互预测用户下一次交互的语义ID
         for i in range(L):
             if i == 0:
                 history += row['history_item_sid'][i]
@@ -626,26 +628,26 @@ class EvalSidDataset(CSVBaseDataset):
                 "dedup": target_item_sid == last_history_item_sid}
     
     
-    def pre(self, idx):
+    def pre(self, idx): #真正决定喂给token序列长什么样子
         instruction =  f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. 
 
 ### Instruction:
 Can you predict the next possible item that the user may expect?
 
 """
-        tokens = self.tokenizer.encode(instruction, bos=True, eos=False)
+        tokens = self.tokenizer.encode(instruction, bos=True, eos=False) #诶嘿，前面统一封装的好处来了
         
         history = self.get_history(self.data.iloc[idx])
         target_item = history['output']
-        history['output'] = ''
+        history['output'] = '' #把输出清空，输入里只保留历史交互的语义ID，提示模型根据这些历史交互预测下一次交互的语义ID，prompt不能包含答案
         negative_prompt_ids = copy.deepcopy(tokens)
         
                 
            
         prompt = self.generate_prompt(history)
 
-        tokens = tokens + self.tokenizer.encode(prompt, bos=False, eos=False)
-        history["input"] = ""
+        tokens = tokens + self.tokenizer.encode(prompt, bos=False, eos=False) #把instruction和prompt都编码成token id的形式，拼接在一起，作为模型的输入
+        history["input"] = "" #这个冗余啊，可以删掉，摸不着头脑
         
         attention_mask = [1] * len(tokens)
         
@@ -657,18 +659,18 @@ Can you predict the next possible item that the user may expect?
                 
             }    
         
-        golden_tokens = self.tokenizer.encode(target_item, bos=False, eos=True)
-        input_prompt_len = len(tokens)
-        tokens = tokens + golden_tokens
+        golden_tokens = self.tokenizer.encode(target_item, bos=False, eos=True) #对答案进行编码，得到golden_tokens，这些token id是模型需要预测的目标，所以放在labels里，前面是输入的token id，对应的label是-100，表示不计算loss，后面是答案的token id，对应的label是它自己，表示模型需要预测出这些token id
+        input_prompt_len = len(tokens) #记录输入的长度
+        tokens = tokens + golden_tokens #现在的token变成了输入和答案的拼接，模型的输入是这个拼接后的token序列，模型需要根据前面输入的token预测后面答案的token
         attention_mask = [1] * len(tokens)
-        labels = [-100] * input_prompt_len + tokens[input_prompt_len:]
-        
+        labels = [-100] * input_prompt_len + tokens[input_prompt_len:] #只有后面的答案部分才计算loss
+        # -100 是hf的一个ingore index，表示这些位置的token不计算loss，模型不会学习去预测这些token，这里我们让输入部分的token对应的label是-100，表示不计算loss，模型不需要学习去预测输入部分的token；让答案部分的token对应的label是它自己，表示模型需要学习去预测这些token
         if len(tokens) >= self.max_len:
             print(len(tokens))
         
         
         return {
-            "input_ids": tokens[-self.max_len:],
+            "input_ids": tokens[-self.max_len:], #这里做的是左截断，保留后面max_len长度的token，丢弃前面多余的token，这样可以保证输入到模型的token序列不会超过max_len，同时保留了最重要的部分，也就是答案和它前面的一部分输入
             "attention_mask": attention_mask[-self.max_len:],
             "labels": labels[-self.max_len:],
             

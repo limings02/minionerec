@@ -1,2 +1,11 @@
 Industrial_ckpt/
 Industrial_ckpt
+
+# Generated outputs / large artifacts
+output_dir/
+wandb/
+temp/
+
+# Python cache
+__pycache__/
+*.py[cod]
