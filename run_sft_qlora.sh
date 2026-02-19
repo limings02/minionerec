@@ -3,6 +3,24 @@ set -euo pipefail
 export TOKENIZERS_PARALLELISM=false
 export WANDB_MODE=disabled
 
+# Auto-configure proxy when running inside WSL and proxy env is not set.
+# Override default port by setting WSL_PROXY_PORT, e.g. `export WSL_PROXY_PORT=7897`.
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  if [[ -z "${http_proxy:-}" && -z "${HTTP_PROXY:-}" && -z "${https_proxy:-}" && -z "${HTTPS_PROXY:-}" ]]; then
+    proxy_host=$(ip route 2>/dev/null | awk '/^default/ {print $3; exit}')
+    proxy_port="${WSL_PROXY_PORT:-7890}"
+    if [[ -n "${proxy_host}" ]]; then
+      export http_proxy="http://${proxy_host}:${proxy_port}"
+      export https_proxy="http://${proxy_host}:${proxy_port}"
+      export HTTP_PROXY="${http_proxy}"
+      export HTTPS_PROXY="${https_proxy}"
+      export no_proxy="localhost,127.0.0.1,::1"
+      export NO_PROXY="${no_proxy}"
+      echo "[run_sft_qlora] WSL proxy enabled: ${http_proxy}"
+    fi
+  fi
+fi
+
 category="Industrial_and_Scientific"
 train_file=$(ls ./data/Amazon/train/${category}*11.csv | head -1)
 eval_file=$(ls ./data/Amazon/valid/${category}*11.csv | head -1)

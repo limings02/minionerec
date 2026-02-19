@@ -65,7 +65,7 @@ from transformers.generation import LogitsProcessor
 import math
 
 if is_peft_available():
-    from peft import PeftConfig, get_peft_model
+    from peft import PeftConfig, get_peft_model, prepare_model_for_kbit_training
 
 # if is_vllm_available():
     # from vllm import LLM, SamplingParams
@@ -278,6 +278,11 @@ class ReReTrainer(Trainer):
                 )
 
         if peft_config is not None:
+            if getattr(model, "is_loaded_in_4bit", False) or getattr(model, "is_loaded_in_8bit", False):
+                model = prepare_model_for_kbit_training(
+                    model,
+                    use_gradient_checkpointing=args.gradient_checkpointing,
+                )
             model = get_peft_model(model, peft_config)
 
         # Reference model

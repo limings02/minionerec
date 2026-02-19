@@ -13,7 +13,6 @@ from fire import Fire
 import pickle
 import math
 import json
-from sklearn.metrics import ndcg_score
 
 os.environ['WANDB_MODE'] = 'disabled'
 
@@ -65,6 +64,7 @@ def train(
     add_gt: bool = False,
     eval_step: float = 0.199,
     num_generations: int = 16,
+    max_completion_length: int = 128,
     num_train_epochs: int = 1,
     learning_rate: float = 1e-6,
     beta: float = 0.04,
@@ -350,7 +350,7 @@ def train(
                                 save_steps=0.1,
                                 save_total_limit=20,
                                 eval_strategy="steps",
-                                max_completion_length=128,
+                                max_completion_length=max_completion_length,
                                 num_generations=num_generations,
                                 temperature=temperature,
                                 sync_ref_model=sync_ref_model,
