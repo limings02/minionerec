@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from typing import List
 import numpy as np 
 import fire
@@ -25,6 +26,16 @@ from data import D3Dataset, SFTData, SidSFTDataset, SidItemFeatDataset, FusionSe
 import random
 from datasets import Dataset as HFDataset
 from torch.utils.data import ConcatDataset
+from budget_utils import (
+    BudgetStopCallback,
+    JsonlMetricsCallback,
+    apply_reproducible_subset,
+    build_summary_from_log_history,
+    ensure_dir,
+    get_cuda_peak_memory_bytes,
+    reset_cuda_peak_memory,
+    write_summary_json,
+)
 
 # 从index文件中提取新token，并添加到tokenizer中
 class TokenExtender:
@@ -137,8 +148,20 @@ def train(
     train_from_scratch: bool = False,
     sid_index_path: str = "",
     item_meta_path: str = "",
+    # 固定预算与小样本闭环参数（用于 4GB 单卡快速 A/B 实验）
+    max_train_samples: int = -1,
+    train_subset_ratio: float = -1.0,
+    max_eval_samples: int = -1,
+    budget_hours: float = 0.0,
+    budget_steps: int = -1,
 ):
     set_seed(seed)
+    ensure_dir(output_dir)
+    run_start_time = time.time()
+    reset_cuda_peak_memory()
+    metrics_path = os.path.join(output_dir, "metrics.jsonl")
+    summary_path = os.path.join(output_dir, "summary.json")
+
     os.environ['WANDB_PROJECT'] = wandb_project
     category_dict = {"Industrial_and_Scientific": "industrial and scientific items", "Office_Products": "office products", "Toys_and_Games": "toys and games", "Sports": "sports and outdoors", "Books": "books"}
     print(category)
@@ -292,10 +315,28 @@ def train(
         model.model_parallel = True
     
     sample_frac = 1
-    hf_train_dataset = HFDataset.from_dict({k: [v[k] for v in train_data] for k in train_data[0].keys()}) #转成HF格式的Dataset，方便后续shuffle和select
-    hf_train_dataset = hf_train_dataset.shuffle(seed=42).select(range(int(sample_frac * len(hf_train_dataset))))  #如果数据集太大，可以先shuffle再选取一部分进行训练，这样每次训练的样本都是随机的，提升泛化能力
+    hf_train_dataset = HFDataset.from_dict({k: [v[k] for v in train_data] for k in train_data[0].keys()})
+    hf_train_dataset = hf_train_dataset.shuffle(seed=42).select(range(int(sample_frac * len(hf_train_dataset))))
     hf_val_dataset = HFDataset.from_dict({k: [v[k] for v in val_data] for k in val_data[0].keys()}).shuffle(seed=seed)
     hf_val_dataset = hf_val_dataset.shuffle(seed=42)
+
+    # 小数据快速闭环：固定索引抽样并缓存到 output_dir，保证不同实验配置比较公平。
+    hf_train_dataset, train_subset_meta = apply_reproducible_subset(
+        hf_train_dataset,
+        max_samples=max_train_samples,
+        subset_ratio=train_subset_ratio,
+        seed=seed,
+        subset_index_path=os.path.join(output_dir, "train_subset_index.json"),
+        subset_name="train",
+    )
+    hf_val_dataset, eval_subset_meta = apply_reproducible_subset(
+        hf_val_dataset,
+        max_samples=max_eval_samples,
+        subset_ratio=-1.0,
+        seed=seed,
+        subset_index_path=os.path.join(output_dir, "eval_subset_index.json"),
+        subset_name="eval",
+    )
 
     print(hf_train_dataset)
     print(hf_val_dataset)
@@ -308,6 +349,15 @@ def train(
     if use_qlora and qlora_compute_dtype == "float32":
         training_bf16 = False
         training_fp16 = False
+
+    # 统一日志：每个 logging/eval 周期写入 metrics.jsonl，便于后续跨实验汇总。
+    callbacks = [
+        JsonlMetricsCallback(metrics_path=metrics_path, run_start_time=run_start_time),
+        EarlyStoppingCallback(early_stopping_patience=3),
+    ]
+    if budget_hours and budget_hours > 0:
+        callbacks.append(BudgetStopCallback(budget_hours=budget_hours))
+
     trainer = transformers.Trainer(
         # deepspeed=deepspeed,
         model=model,
@@ -321,6 +371,7 @@ def train(
             gradient_accumulation_steps=gradient_accumulation_steps,
             warmup_steps=20,
             num_train_epochs=num_epochs,
+            max_steps=budget_steps if budget_steps > 0 else -1,
             learning_rate=learning_rate,
             bf16=training_bf16,
             fp16=training_fp16,
@@ -340,7 +391,7 @@ def train(
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         ), #把 padding 后的序列长度再“向上补齐”到 8 的倍数。返回tensors="pt"表示返回PyTorch的张量格式，padding=True表示对输入进行padding，使得同一批次内的序列长度一致，方便并行计算。
-        callbacks = [EarlyStoppingCallback(early_stopping_patience=3)], #早停，如果连续3次评估指标没有提升，就停止训练，防止过拟合和节省计算资源
+        callbacks=callbacks, #早停，如果连续3次评估指标没有提升，就停止训练，防止过拟合和节省计算资源
         # optimizers=(optimizer, lr_scheduler) 
     )
     model.config.use_cache = False #训练阶段不需要KV cache，关闭它可以节省显存和加速训练
@@ -367,6 +418,29 @@ def train(
         final_dir = os.path.join(output_dir, "final_checkpoint")
         trainer.model.save_pretrained(final_dir)
         tokenizer.save_pretrained(final_dir)
+
+    run_end_time = time.time()
+    peak_memory_bytes = get_cuda_peak_memory_bytes()
+    final_metrics, best_metrics = build_summary_from_log_history(trainer.state.log_history)
+    runtime_sec = max(1e-8, run_end_time - run_start_time)
+    summary = {
+        "entry_script": "sft.py",
+        "output_dir": output_dir,
+        "seed": int(seed),
+        "budget_hours": float(budget_hours),
+        "budget_steps": int(budget_steps),
+        "runtime_sec": float(runtime_sec),
+        "global_steps": int(trainer.state.global_step),
+        "throughput_steps_per_sec": float(trainer.state.global_step / runtime_sec),
+        "peak_memory_bytes": int(peak_memory_bytes),
+        "peak_memory_mb": float(peak_memory_bytes / (1024 ** 2)),
+        "train_subset": train_subset_meta,
+        "eval_subset": eval_subset_meta,
+        "final_metrics": final_metrics,
+        "best_metrics": best_metrics,
+    }
+    write_summary_json(summary_path, summary)
+    print(f"Saved budget summary to {summary_path}")
 
 
 

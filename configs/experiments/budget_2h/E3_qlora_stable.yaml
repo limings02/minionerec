@@ -1,0 +1,28 @@
+name: E3_qlora_stable
+entry_script: rl.py
+output_dir: output_dir/budget_2h
+args:
+  model_path: ./Industrial_ckpt
+  train_file: ./data/Amazon/train/Industrial_and_Scientific_5_2016-10-2018-11.csv
+  eval_file: ./data/Amazon/valid/Industrial_and_Scientific_5_2016-10-2018-11.csv
+  info_file: ./data/Amazon/info/Industrial_and_Scientific_5_2016-10-2018-11.txt
+  category: Industrial_and_Scientific
+  sid_index_path: ./data/Amazon/index/Industrial_and_Scientific.index.json
+  item_meta_path: ./data/Amazon/index/Industrial_and_Scientific.item.json
+  wandb_project: ""
+  wandb_run_name: E3_qlora_stable
+  use_qlora: true
+  train_batch_size: 8
+  eval_batch_size: 8
+  gradient_accumulation_steps: 1
+  num_train_epochs: 10
+  eval_step: 0.05
+  reward_type: ranking
+  num_generations: 8
+  max_completion_length: 32
+  # 稳定性改动：提高 KL 系数并降低采样温度。
+  temperature: 0.8
+  beta: 0.08
+  beam_search: true
+  test_during_training: false
+  reward_shaping: true

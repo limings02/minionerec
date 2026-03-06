@@ -227,6 +227,12 @@ class ReReTrainer(Trainer):
         #*loss
         dapo: bool = False,
         gspo: bool = False,
+        #* debug
+        debug: bool = False,
+        debug_fail_fast: bool = True,
+        debug_short_completion_patience: int = 10,
+        debug_reward_std_patience: int = 10,
+        debug_print_every_steps: int = 1,
 
         #* others
         info_file: str = None,
@@ -393,6 +399,14 @@ class ReReTrainer(Trainer):
         self.dynamic_sampling = dynamic_sampling
         self.dapo = dapo
         self.gspo = gspo
+        self.debug = bool(debug)
+        self.debug_fail_fast = bool(debug_fail_fast)
+        self.debug_short_completion_patience = max(1, int(debug_short_completion_patience))
+        self.debug_reward_std_patience = max(1, int(debug_reward_std_patience))
+        self.debug_print_every_steps = max(1, int(debug_print_every_steps))
+        self._short_completion_streak = 0
+        self._zero_reward_std_streak = 0
+        self._printed_reward_shaping_hint = False
         # self.logits_processor = logits_processor
 
         # Check if the per_device_train/eval_batch_size * num processes can be divided by the number of generations
@@ -534,7 +548,8 @@ class ReReTrainer(Trainer):
         with open(self.info_file, 'r') as f:
             info = f.readlines()
             # Parse new format: semantic_id \t item_title \t item_id
-            semantic_ids = [line.split('\t')[0].strip() + "\n" for line in info]
+            semantic_ids_raw = [line.split('\t')[0].strip() for line in info]
+            semantic_ids = [sid + "\n" for sid in semantic_ids_raw]
             item_titles = [line.split('\t')[1].strip() + "\n" for line in info if len(line.split('\t')) >= 2]
             
             # Format for tokenization
@@ -542,6 +557,9 @@ class ReReTrainer(Trainer):
             info_titles = [f'''### Response:\n{_}''' for _ in item_titles]
 
             info = info_semantic
+
+        # 代理指标1：合法 SID 集合（用于 invalid_sid_rate 统计）
+        self.valid_semantic_ids = set(semantic_ids_raw)
 
         # with open(self.info_file, 'r') as f:
         #     info = f.readlines()
@@ -588,6 +606,23 @@ class ReReTrainer(Trainer):
             x = [str(_) for _ in x]
             return '-'.join(x)
 
+    def _is_debug_process(self) -> bool:
+        if not self.debug:
+            return False
+        if hasattr(self, "accelerator"):
+            return self.accelerator.is_main_process
+        return True
+
+    def _should_debug_log(self) -> bool:
+        if not self.debug:
+            return False
+        step = int(getattr(self.state, "global_step", 0))
+        return step % self.debug_print_every_steps == 0
+
+    def _debug_print(self, prefix: str, message: str) -> None:
+        if self._is_debug_process():
+            print(f"{prefix} {message}")
+    
     def prefix_allowed_tokens_fn(self, batch_id, input_ids):
             hash_number = self.get_hash(input_ids)
             if hash_number in self.hash_dict:
@@ -697,10 +732,29 @@ class ReReTrainer(Trainer):
                 # unconditional_ids=None,
                 num_beams=self.num_generations if self.beam_search else 1,
                 base_model=self.base_model,
-                eos_token_id=self.processing_class.eos_token_id
+                eos_token_id=self.processing_class.eos_token_id,
+                debug=self.debug and self._should_debug_log(),
+                fail_on_empty=self.debug_fail_fast,
+                fail_on_eos_only=self.debug_fail_fast,
+                eos_only_fail_before_step=1,
             )
         self.logits_processor = LogitsProcessorList([TemperatureLogitsWarper(temperature=self.temperature), ccc])
         self.test_lp_list = LogitsProcessorList([ccc])
+
+        if self._should_debug_log():
+            processor_names = [processor.__class__.__name__ for processor in self.logits_processor]
+            generation_max_new_tokens = getattr(self.generation_config, "max_new_tokens", None)
+            self._debug_print(
+                "[DEBUG][GEN]",
+                f"step={self.state.global_step}, max_new_tokens={generation_max_new_tokens}, "
+                f"temperature={self.temperature}, logits_processor_len={len(self.logits_processor)}, "
+                f"processors={processor_names}",
+            )
+            if self.debug_fail_fast and generation_max_new_tokens is not None and int(generation_max_new_tokens) <= 1:
+                raise RuntimeError(
+                    "[DEBUG][GEN][FAILFAST] max_new_tokens<=1，会导致 completion_length≈1；"
+                    "请检查 max_completion_length / generation_config 传参。"
+                )
 
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm:
@@ -890,6 +944,40 @@ class ReReTrainer(Trainer):
         eos_idx[is_eos.any(dim=1)] = is_eos.int().argmax(dim=1)[is_eos.any(dim=1)]
         sequence_indices = torch.arange(is_eos.size(1), device=device).expand(is_eos.size(0), -1)
         completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
+        completion_lengths = completion_mask.sum(1).float()
+        mean_completion_length = completion_lengths.mean().item() if completion_lengths.numel() > 0 else 0.0
+        first_token_eos_rate = 0.0
+        if completion_ids.size(1) > 0:
+            first_token_eos_rate = (completion_ids[:, 0] == self.processing_class.eos_token_id).float().mean().item()
+
+        if self._should_debug_log():
+            self._debug_print(
+                "[DEBUG][GEN]",
+                f"step={self.state.global_step}, mean_completion_length={mean_completion_length:.4f}, "
+                f"first_token_eos_rate={first_token_eos_rate:.4f}",
+            )
+            # 只打印首个 prompt 下前 2 个候选，避免日志爆炸
+            sample_candidates = min(2, completion_ids.size(0))
+            for candidate_idx in range(sample_candidates):
+                raw_ids = completion_ids[candidate_idx].detach().cpu().tolist()
+                non_pad_ids = [int(tid) for tid in raw_ids if tid != self.processing_class.pad_token_id]
+                decode_text = self.processing_class.decode(non_pad_ids, skip_special_tokens=False)
+                first_is_eos = bool(non_pad_ids and non_pad_ids[0] == self.processing_class.eos_token_id)
+                self._debug_print(
+                    "[DEBUG][GEN]",
+                    f"step={self.state.global_step}, candidate={candidate_idx}, "
+                    f"new_tokens={len(non_pad_ids)}, first_is_eos={first_is_eos}, "
+                    f"tail_token_ids={non_pad_ids[-20:]}, decode={repr(decode_text)}",
+                )
+
+        if mean_completion_length < 3.0:
+            self._short_completion_streak += 1
+        else:
+            self._short_completion_streak = 0
+        if self.debug_fail_fast and self._short_completion_streak >= self.debug_short_completion_patience:
+            raise RuntimeError(
+                "[DEBUG][GEN][FAILFAST] completion_length 持续过短(<3)，疑似 EOS 早停或约束全 mask。"
+            )
         # completions_text = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
         # print(completions_text)
         
@@ -921,6 +1009,28 @@ class ReReTrainer(Trainer):
                 completions.append([{"role": "assistant", "content": bootstrap + completion}])
         else:
             completions = completions_text
+
+        # 代理指标2：invalid_sid_rate / duplicate_rate
+        # 说明：
+        # 1) invalid_sid_rate：生成结果不在合法 SID 集合中的比例
+        # 2) duplicate_rate：同一 prompt 下 G 个候选的重复比例（1 - unique/total）
+        normalized_completions = [
+            text.split("Response:\n")[-1].strip().strip("\"")
+            for text in completions_text
+        ]
+        invalid_count = sum(1 for sid in normalized_completions if sid not in self.valid_semantic_ids)
+        invalid_sid_rate = invalid_count / len(normalized_completions) if normalized_completions else 0.0
+
+        duplicate_group_rates = []
+        for i in range(0, len(normalized_completions), self.num_generations):
+            group = normalized_completions[i:i + self.num_generations]
+            if not group:
+                continue
+            duplicate_group_rates.append(1.0 - len(set(group)) / len(group))
+        duplicate_rate = sum(duplicate_group_rates) / len(duplicate_group_rates) if duplicate_group_rates else 0.0
+
+        self._metrics["invalid_sid_rate"].append(invalid_sid_rate)
+        self._metrics["duplicate_rate"].append(duplicate_rate)
         
         div_lis = [len(set(completions_text[i:i+self.num_generations]))/self.num_generations for i in range(0, len(completions_text), self.num_generations)]
         # cate_diversity = len(set(completions_text))/len(completions_text)
@@ -964,16 +1074,56 @@ class ReReTrainer(Trainer):
 
         # Apply weights to each reward function's output and sum
         rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
+        grouped_rewards = rewards.view(-1, self.num_generations)
 
         # Compute grouped-wise rewards
-        mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
-        std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
+        mean_grouped_rewards = grouped_rewards.mean(dim=1)
+        std_grouped_rewards = grouped_rewards.std(dim=1)
 
         # Normalize the rewards to compute the advantages
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
-        # print(f"advantages: {advantages}")
+        advantages_all = advantages
+
+        reward_std_mean = std_grouped_rewards.mean().item()
+        if reward_std_mean < 1e-8:
+            self._zero_reward_std_streak += 1
+        else:
+            self._zero_reward_std_streak = 0
+
+        if self._should_debug_log():
+            num_show_groups = min(2, grouped_rewards.shape[0])
+            for group_idx in range(num_show_groups):
+                reward_values = grouped_rewards[group_idx].detach().cpu().tolist()
+                self._debug_print(
+                    "[DEBUG][REWARD]",
+                    f"step={self.state.global_step}, prompt_group={group_idx}, rewards={reward_values}",
+                )
+            self._debug_print(
+                "[DEBUG][REWARD]",
+                f"step={self.state.global_step}, reward_std_mean={reward_std_mean:.8f}, "
+                f"adv_mean={advantages_all.mean().item():.8f}, "
+                f"adv_min={advantages_all.min().item():.8f}, adv_max={advantages_all.max().item():.8f}",
+            )
+
+        if self.debug_fail_fast and self._zero_reward_std_streak >= self.debug_reward_std_patience:
+            raise RuntimeError(
+                "[DEBUG][REWARD][FAILFAST] reward_std 持续为 0，优势函数退化为 0；"
+                "请检查 reward 设计是否恒定。"
+            )
+
+        if (
+            invalid_sid_rate >= 0.999
+            and rewards.abs().max().item() < 1e-8
+            and not self._printed_reward_shaping_hint
+            and self._should_debug_log()
+        ):
+            self._debug_print(
+                "[DEBUG][REWARD]",
+                "检测到 invalid_sid_rate≈1 且 reward 全 0。建议最小 shaping：非法=-1，合法未命中=0，命中=ndcg 或 +1。",
+            )
+            self._printed_reward_shaping_hint = True
 
         # Slice to keep only the local part of the data
         process_slice = slice(

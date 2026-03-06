@@ -1,0 +1,28 @@
+name: E2_qlora_fast_gen
+entry_script: rl.py
+output_dir: output_dir/budget_steps
+args:
+  model_path: ./Industrial_ckpt
+  train_file: ./data/Amazon/train/Industrial_and_Scientific_5_2016-10-2018-11.csv
+  eval_file: ./data/Amazon/valid/Industrial_and_Scientific_5_2016-10-2018-11.csv
+  info_file: ./data/Amazon/info/Industrial_and_Scientific_5_2016-10-2018-11.txt
+  category: Industrial_and_Scientific
+  sid_index_path: ./data/Amazon/index/Industrial_and_Scientific.index.json
+  item_meta_path: ./data/Amazon/index/Industrial_and_Scientific.item.json
+  wandb_project: ""
+  wandb_run_name: E2_qlora_fast_gen
+  use_qlora: true
+  train_batch_size: 4
+  eval_batch_size: 4
+  gradient_accumulation_steps: 1
+  num_train_epochs: 10
+  eval_step: 0.05
+  reward_type: ranking
+  # 更快生成：G 从 8 降到 4，并压缩 completion 长度。
+  num_generations: 4
+  max_completion_length: 16
+  temperature: 1.0
+  beta: 0.04
+  beam_search: true
+  test_during_training: false
+  reward_shaping: true
